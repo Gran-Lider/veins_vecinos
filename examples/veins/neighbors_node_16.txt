@@ -1,0 +1,12 @@
+=== Beacon recibido por nodo 16 ===
+De nodo: 22 a tiempo: 7.392893155794
+Distancia: 46.706 m
+==========================================
+=== Beacon recibido por nodo 16 ===
+De nodo: 22 a tiempo: 8.392893504357
+Distancia: 57.7908 m
+==========================================
+=== Beacon recibido por nodo 16 ===
+De nodo: 22 a tiempo: 9.392893921303
+Distancia: 67.2067 m
+==========================================

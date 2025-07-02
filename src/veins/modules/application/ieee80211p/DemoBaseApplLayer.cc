@@ -21,6 +21,13 @@
 //
 
 #include "veins/modules/application/ieee80211p/DemoBaseApplLayer.h"
+#include "veins/modules/application/utils/DirectionUtils.h"
+
+//Agregado para la lectura de archivos
+#include <fstream>
+#include <sstream>
+#include <map>
+///
 
 using namespace veins;
 
@@ -174,7 +181,10 @@ void DemoBaseApplLayer::populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId
         bsm->setPsid(-1);
         bsm->setChannelNumber(static_cast<int>(Channel::cch));
         bsm->addBitLength(beaconLengthBits);
-        bsm->setIni_position(ini_position);
+        //bsm->setIni_position(ini_position);
+        bsm->setIni_position(curPosition);  // ✅ Funciona y es seguro
+
+
 
         wsm->setUserPriority(beaconUserPriority);
     }
@@ -350,6 +360,9 @@ void DemoBaseApplLayer::PreparaBeaconValues(DemoSafetyMessage* bsm) {
 
 }
 
+
+
+
 void DemoBaseApplLayer::UpdateNNT(DemoSafetyMessage* bsm) {   //SE ACTUALIZA LA NNT con el beacon received
 
 
@@ -359,13 +372,109 @@ void DemoBaseApplLayer::UpdateNNT(DemoSafetyMessage* bsm) {   //SE ACTUALIZA LA 
     double b_NodeDensity = bsm->getNodeDensity();
     //============================================================================================
 
-    if(ListBeacon.SearchBeaconNodeID(Table_Ngh_NodeId)){
-        ListBeacon.UpdateBeacon(Table_Ngh_NodeType, Table_Ngh_Msg_TreeID ,Table_Ngh_NodeId,Table_Beacon_ArrivalTime, Table_Ngh_Coord, b_NodeDensity, NH_Dst_to_Dest);
+//    if(ListBeacon.SearchBeaconNodeID(Table_Ngh_NodeId)){
+//        ListBeacon.UpdateBeacon(Table_Ngh_NodeType, Table_Ngh_Msg_TreeID ,Table_Ngh_NodeId,Table_Beacon_ArrivalTime, Table_Ngh_Coord, b_NodeDensity, NH_Dst_to_Dest);
+//    }
+//
+//    else{
+//        ListBeacon.AddBeacon(Table_Ngh_NodeType, Table_Ngh_Msg_TreeID ,Table_Ngh_NodeId,Table_Beacon_ArrivalTime, Table_Ngh_Coord, b_NodeDensity, NH_Dst_to_Dest);
+//    }
+    // Paso 1: Obtener la coordenada anterior ANTES de actualizar
+    Coord coordAnterior;
+    if (ListBeacon.SearchBeaconNodeID(Table_Ngh_NodeId)) {
+        coordAnterior = ListBeacon.SearchBeaconCoord(Table_Ngh_NodeId);
+    } else {
+        coordAnterior = Table_Ngh_Coord;  // primera vez, sin movimiento
     }
 
-    else{
-        ListBeacon.AddBeacon(Table_Ngh_NodeType, Table_Ngh_Msg_TreeID ,Table_Ngh_NodeId,Table_Beacon_ArrivalTime, Table_Ngh_Coord, b_NodeDensity, NH_Dst_to_Dest);
+    // Paso 2: Actualizar la tabla con los nuevos datos del beacon
+    if (ListBeacon.SearchBeaconNodeID(Table_Ngh_NodeId)) {
+        ListBeacon.UpdateBeacon(Table_Ngh_NodeType, Table_Ngh_Msg_TreeID, Table_Ngh_NodeId,
+                                Table_Beacon_ArrivalTime, Table_Ngh_Coord, b_NodeDensity, NH_Dst_to_Dest);
+    } else {
+        ListBeacon.AddBeacon(Table_Ngh_NodeType, Table_Ngh_Msg_TreeID, Table_Ngh_NodeId,
+                             Table_Beacon_ArrivalTime, Table_Ngh_Coord, b_NodeDensity, NH_Dst_to_Dest);
     }
+
+    // Paso 3: Calcular la dirección correctamente
+       std::string direccion = calcularDireccion(coordAnterior, Table_Ngh_Coord);
+
+
+
+    //============================================================================================AGREGADO
+
+    //std::cout << "Escribiendo en: " << filename << std::endl;
+
+//    Coord coordAnterior = ListBeacon.SearchBeaconCoord(Table_Ngh_NodeId);
+//    std::string direccion = calcularDireccion(coordAnterior, Table_Ngh_Coord);
+
+//SOLO LA PARTE DE ABAJO SE MODIFICO
+    // Paso 4: Imprimir en archivo
+    std::ofstream file;
+    std::string filename = "/home/pepe/Descargas/Neighbor table Veins-20250619/veins/out/neithbors/neighbors_node_" + std::to_string(myId) + ".txt";
+    file.open(filename, std::ios::app);  // Abrir modo agregar
+
+
+    file << "=== Beacon recibido por nodo " << myId << " ===" << std::endl;
+    file << "De nodo: " << Table_Ngh_NodeId << " a tiempo: " << simTime() << std::endl;
+    file << "Distancia: " << Table_Ngh_Coord.distance(curPosition) << " m" << std::endl;
+    file << "Posición del emisor: " << Table_Ngh_Coord << std::endl;
+    file << "Dirección estimada: " << direccion << std::endl;
+    file << "DEBUG - Coord anterior usada: " << coordAnterior << std::endl;
+    file << "DEBUG - Coord actual usada:   " << Table_Ngh_Coord << std::endl;
+
+
+    file << "==========================================" << std::endl;
+
+    file.close();
+
+       // LA SIGUIENTE FUNCION COMENTADA SIRVE UNICAMENTE PARA RECOPILAR LOS ULTIMOS ARCHIVOS OBTENIDOS DE CADA NODO ES DECIR NO SE AGREGAN SOLO SE SOBREESCRIBEN
+//       std::string filename = "/home/pepe/Descargas/Neighbor table Veins-20250619/veins/out/neithbors/neighbors_node_" + std::to_string(myId) + ".txt";
+//       std::ifstream infile(filename);
+//       std::map<int, std::string> registros;  // nodo_id → bloque de texto
+//
+//       std::string line, buffer;
+//       int nodo_actual = -1;
+//
+//       while (std::getline(infile, line)) {
+//           if (line.find("=== Beacon recibido por nodo") != std::string::npos) {
+//               if (nodo_actual != -1) {
+//                   registros[nodo_actual] = buffer;
+//                   buffer.clear();
+//               }
+//               buffer = line + "\n";
+//           } else if (line.find("De nodo:") != std::string::npos) {
+//               std::istringstream iss(line);
+//               std::string aux;
+//               iss >> aux >> aux >> nodo_actual;  // Salta palabras hasta obtener el ID del nodo
+//               buffer += line + "\n";
+//           } else {
+//               buffer += line + "\n";
+//           }
+//       }
+//       if (nodo_actual != -1) registros[nodo_actual] = buffer;  // guardar el último bloque
+//       infile.close();
+//
+//       // Paso 2: Reemplazar o agregar el nuevo
+//       std::ostringstream nuevoRegistro;
+//       nuevoRegistro << "=== Beacon recibido por nodo " << myId << " ===" << std::endl;
+//       nuevoRegistro << "De nodo: " << Table_Ngh_NodeId << " a tiempo: " << simTime() << std::endl;
+//       nuevoRegistro << "Distancia: " << Table_Ngh_Coord.distance(curPosition) << " m" << std::endl;
+//       nuevoRegistro << "Posición del emisor: " << Table_Ngh_Coord << std::endl;
+//       nuevoRegistro << "Dirección estimada: " << direccion << std::endl;
+//       nuevoRegistro << "DEBUG - Coord anterior usada: " << coordAnterior << std::endl;
+//       nuevoRegistro << "DEBUG - Coord actual usada:   " << Table_Ngh_Coord << std::endl;
+//       nuevoRegistro << "==========================================" << std::endl;
+//
+//       registros[Table_Ngh_NodeId] = nuevoRegistro.str();
+
+       // Paso 3: Reescribir el archivo completo
+//       std::ofstream outfile(filename, std::ios::trunc);
+//       for (const auto& par : registros) {
+//           outfile << par.second;
+//       }
+//       outfile.close();
+    //============================================================================================
 
     ListBeacon.PurgeBeacons(3);
     //ListBeacon.SortBeacons();

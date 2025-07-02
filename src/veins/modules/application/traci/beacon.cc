@@ -1,4 +1,6 @@
 #include "veins/modules/application/traci/beacon.h"
+#include "veins/modules/application/utils/DirectionUtils.h"
+
 //=======================================================================================
 //=======    TABLA DE BEACONS CREADA POR C/ IZA MODIFICADA POR PABLO ====================
 //=======================================================================================
@@ -23,6 +25,7 @@ void BeaconList::AddBeacon(std::string b_typeNode, int b_idMsg, int b_idVehicle,
     n->idVehicle = b_idVehicle;
     n->time = b_time;
     n->SenderCoord = b_SenderCoord;
+    n->lastCoord = b_SenderCoord;  // ← agrega esto para inicializar correctamente
     n->Nv = b_Nv;
     n->NH_Dst_to_Dest = NH_Dst_to_Dest;
 
@@ -71,10 +74,33 @@ void BeaconList::PrintBeacons(int CurrNodeAddress, string IN_OUT){
     EV<<"------------------------------------------------------------------------------------------------------------------------------------------------------------------------"<<endl;
     EV<<setw(35)<<IN_OUT<<"  -->  Vehicle Neighbor Table -> CurrNodeAddress ="<<CurrNodeAddress<<endl;
     EV<<"------------------------------------------------------------------------------------------------------------------------------------------------------------------------"<<endl;
-    EV<<"NodeType"<<setw(15)<<"TreeMsg_ID"<<setw(15)<<"MAC_Address"<<setw(15)<<"NH_Adress"<<setw(16)<<"NH_Dst_to_Dest"<<setw(16)<<"Density"<<setw(15)<<"ArrivalTime"<<endl;
+
+
+    //EV<<"NodeType"<<setw(15)<<"TreeMsg_ID"<<setw(15)<<"MAC_Address"<<setw(15)<<"NH_Adress"<<setw(16)<<"NH_Dst_to_Dest"<<setw(16)<<"Density"<<setw(15)<<"ArrivalTime"<<endl;
+    EV<<"NodeType"<<setw(15)<<"TreeMsg_ID"<<setw(15)<<"MAC_Address"<<setw(15)<<"NH_Adress"
+       <<setw(16)<<"NH_Dst_to_Dest"<<setw(16)<<"Density"<<setw(15)<<"ArrivalTime"<<setw(12)<<"Direccion"<<endl;
+
+
+
     while(curr != NULL)
     {
-        EV<<setw(5)<<curr->typeNode<<setw(15)<<curr->idMsg<<setw(15)<<curr->idVehicle<<setw(15)<<curr->NH_Address<<setw(15)<<curr->NH_Dst_to_Dest<<setw(15)<<curr->Nv<<setw(15)<<curr->time<<endl;
+        //EV<<setw(5)<<curr->typeNode<<setw(15)<<curr->idMsg<<setw(15)<<curr->idVehicle<<setw(15)<<curr->NH_Address<<setw(15)<<curr->NH_Dst_to_Dest<<setw(15)<<curr->Nv<<setw(15)<<curr->time<<endl;
+//        std::string dir = "Desconocida";
+//        if (curr->next != nullptr && curr->idVehicle == curr->next->idVehicle) {
+//            //dir = calcularDireccion(curr->SenderCoord, curr->next->SenderCoord);
+//            std::string dir = calcularDireccion(curr->lastCoord, curr->SenderCoord);
+//        }
+
+        std::string dir = "Desconocida";
+
+        if (curr->lastCoord != curr->SenderCoord) {
+            dir = calcularDireccion(curr->lastCoord, curr->SenderCoord);  // ← ahora sí se guarda correctamente
+        }
+        EV << "pos actual: " << curr->SenderCoord << " | pos anterior: " << curr->lastCoord << "\n";
+
+        EV<<setw(5)<<curr->typeNode<<setw(15)<<curr->idMsg<<setw(15)<<curr->idVehicle<<setw(15)<<curr->NH_Address
+           <<setw(15)<<curr->NH_Dst_to_Dest<<setw(15)<<curr->Nv<<setw(15)<<curr->time<<setw(12)<<dir<<endl;
+
         curr = curr->next;
     }
     EV<<"------------------------------------------------------------------------------------------------------------------------------------------------------------------------"<<endl;
@@ -299,17 +325,35 @@ void BeaconList::UpdateBeacon(std::string b_typeNode, int b_idMsg, int b_idVehic
     n =head;
     while(n != NULL)
     {
+     //   if(n->idVehicle == b_idVehicle)
+       // {
+         //   n->typeNode = b_typeNode;
+           // n->idMsg = b_idMsg;
+//            n->idVehicle = b_idVehicle;
+//            n->time = b_time;
+//            n->SenderCoord = b_SenderCoord;
+//            n->Nv = b_Nv;
+//            n->NH_Dst_to_Dest = NH_Dst_to_Dest;
+//            return;
+//        }
+
         if(n->idVehicle == b_idVehicle)
         {
+            n->lastCoord = n->SenderCoord;
+            n->SenderCoord = b_SenderCoord;
+
+
+
             n->typeNode = b_typeNode;
             n->idMsg = b_idMsg;
             n->idVehicle = b_idVehicle;
             n->time = b_time;
-            n->SenderCoord = b_SenderCoord;
+
             n->Nv = b_Nv;
             n->NH_Dst_to_Dest = NH_Dst_to_Dest;
             return;
         }
+
         else
             n = n->next;
     }

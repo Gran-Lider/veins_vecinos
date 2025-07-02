@@ -21,6 +21,7 @@
 //
 
 #pragma once
+#include <fstream>  // Asegúrate de incluir esto
 
 #include "veins/modules/application/ieee80211p/DemoBaseApplLayer.h"
 
@@ -53,6 +54,15 @@ protected:
 protected:
     void onWSM(BaseFrame1609_4* wsm) override;
     void onWSA(DemoServiceAdvertisment* wsa) override;
+
+
+
+    ////////////////////////AGREGADOS////////////////////////////////////////
+    std::ofstream neighborLog;  // LOG de vecinos
+    virtual void sendDirectedBeaconTo(int dstId);  // <- agrégalo aquí
+    bool yaImprimiInfo = false;
+
+    ////////////////////////////////////////////////////////////////////////
 
     void onBSM(DemoSafetyMessage* bsm) override; //Add function
 

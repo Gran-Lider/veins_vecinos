@@ -31,13 +31,21 @@ using namespace std;
 using namespace veins;
 
 class BeaconList {
-private:
+public:
     typedef struct beacon {
             string typeNode;
             int idMsg;
             int idVehicle;
             double time = 0;
             Coord SenderCoord;
+            //////////////////////Agregadas para la coordenada
+
+
+            Coord lastCoord;  // NUEVO
+
+
+
+            ///////////////
             double dsr = 0;
             double dsd = 0;
             double drd = 0;
@@ -52,13 +60,56 @@ private:
             // self messages for timers
             cMessage *beaconStartMsg;  ///< start of each beacon
             beacon* next;
-    }* beaconPtr;
+    };
+    //* beaconPtr;
+    typedef struct beacon* beaconPtr;  // ← esto también debe estar en public
+    beaconPtr getHead() { return head; }
 
     beaconPtr head;
     beaconPtr curr;
     beaconPtr temp;
 
+
+
 public:
+//    typedef struct beacon {
+//                string typeNode;
+//                int idMsg;
+//                int idVehicle;
+//                double time = 0;
+//                Coord SenderCoord;
+//                //////////////////////Agregadas para la coordenada
+//
+//
+//                Coord lastCoord;  // NUEVO
+//
+//
+//
+//                ///////////////
+//                double dsr = 0;
+//                double dsd = 0;
+//                double drd = 0;
+//                double Nv = 0;
+//                double wdist = 0;
+//                double abe = 0;
+//                /////////////////////  LUIS  //////////////////////////////
+//                LAddress::L2Type NH_Address = 0;
+//                double NH_GS=1;
+//                double NH_Dst_to_Dest=0;
+//                ////////////////////////////////////////////////////////
+//                // self messages for timers
+//                cMessage *beaconStartMsg;  ///< start of each beacon
+//                beacon* next;
+//        }* beaconPtr;
+//
+//        beaconPtr head;
+//        beaconPtr curr;
+//        beaconPtr temp;
+    //beaconPtr getHead() { return head; }
+    std::string direccion;  // Dirección estimada (Norte, Sur, etc.)
+
+
+
     BeaconList();
     void AddBeacon(string b_typeNode,int b_idMsg,int b_idVehicle,double b_time,Coord b_SenderCoord,double b_Nv,double NH_Dst_to_Dest);
     void UpdateBeacon(string b_typeNode,int b_idMsg,int b_idVehicle,double b_time,Coord b_SenderCoord, double b_Nv, double NH_Dst_to_Dest);
