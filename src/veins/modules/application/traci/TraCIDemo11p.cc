@@ -23,6 +23,11 @@
 #include "veins/modules/application/traci/TraCIDemo11p.h"
 #include "veins/modules/application/utils/DirectionUtils.h"
 #include "veins/modules/application/traci/TraCIDemo11pMessage_m.h"
+
+Coord destCoord;      // posición fija de destino (52)
+bool  destInitialized = false;
+
+#include <fstream>  // std::ifstream
 #include <cstdio>   // popen
 #include <iostream>
 #include <sstream>
@@ -40,6 +45,9 @@ void TraCIDemo11p::initialize(int stage)
     DemoBaseApplLayer::initialize(stage);
     if (stage == 0) {
 
+        std::cout << "✅ Nodo " << getParentModule()->getIndex() << " usando TraCIDemo11p" << std::endl;
+
+
         sentMessage = false;
         lastDroveAt = simTime();
         currentSubscribedServiceId = -1;
@@ -54,15 +62,6 @@ void TraCIDemo11p::initialize(int stage)
         // Mensaje inicial
         neighborLog << "=== TABLA DE VECINOS DEL NODO " << nodeIndex << " ===" << std::endl;
 
-
-        // Solo nodo 0 envía el beacon GPRS a los 20s
-        if (nodeIndex == 0) {
-            cMessage* beaconGPRS = new cMessage("beaconGPRS");
-            scheduleAt(simTime() + 20, beaconGPRS);
-            std::cout << "[Nodo 0] Evento beaconGPRS programado para los 20s" << std::endl;
-        }
-
-        ////////////////////////////////////////////////////////////
     }
 
 
@@ -81,12 +80,6 @@ void TraCIDemo11p::onWSA(DemoServiceAdvertisment* wsa)
 }
 
 void TraCIDemo11p::onBSM(DemoSafetyMessage* bsm) {
-
-    //std::cout << "[T=" << simTime() << "] Nodo " << myId << " recibió beacon del nodo "
-      //        << bsm->getCurrentNodeAddress()
-        //      << " (destino: " << bsm->getRecipientAddress()
-          //    << ", TreeID: " << bsm->getTreeId() << ")\n";
-
 
     //Datos del nodo actual
     Coord current_Pos = mobility->getPositionAt(simTime());
@@ -120,77 +113,50 @@ void TraCIDemo11p::onBSM(DemoSafetyMessage* bsm) {
 }
 
 
-//void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
-//{
-//    TraCIDemo11pMessage* wsm = check_and_cast<TraCIDemo11pMessage*>(frame);
-//
-//    findHost()->getDisplayString().setTagArg("i", 1, "green");
-//
-//    Coord cur_pos = mobility->getPositionAt(simTime()) ;
-//
-//
-//    if (mobility->getRoadId()[0] != ':') traciVehicle->changeRoute(wsm->getDemoData(), 9999);
-//
-//    if (!sentMessage) {
-//        sentMessage = true;
-//
-//        // repeat the received traffic update once in 2 seconds plus some random delay
-//        wsm->setSenderAddress(myId);
-//        wsm->setSerial(3);
-//
-//        scheduleAt(simTime() + 2 + uniform(0.01, 0.2), wsm->dup());
-//    }
-//}
-
 void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
 {
-    TraCIDemo11pMessage* wsm = check_and_cast<TraCIDemo11pMessage*>(frame);
 
-    int destinoFinal = 52;  // Nodo objetivo fijo
-    Coord curPos = mobility->getPositionAt(simTime());
+    if (auto* msg = dynamic_cast<TraCIDemo11pMessage*>(frame)) {
+        std::cout << "📩 Nodo " << myId
+                  << " recibió TraCIDemo11pMessage: "
+                  << msg->getName()
+                  << ", contenido: " << msg->getDemoData()
+                  << std::endl;
 
-    std::string comando = "python3 -u calcular_siguiente_salto.py " + std::to_string(myId) + " " +
-                          std::to_string(destinoFinal) + " " +
-                          std::to_string(curPos.x) + " " + std::to_string(curPos.y);
+        if (std::string(msg->getName()) == "beaconGPRS") {
+            int destinoFinal = msg->par("destino").longValue();
+            int prevHop      = msg->par("prevHop").longValue();      // ← extraemos prevHop
+            double dx        = msg->par("destX").doubleValue();      // ← y el destX/destY
+            double dy        = msg->par("destY").doubleValue();
+            Coord destC(dx, dy, 0);
 
-    FILE* pipe = popen(comando.c_str(), "w");
-    if (!pipe) {
-        std::cerr << "Error al ejecutar el script Python" << std::endl;
-        return;
-    }
+            std::cout << "📌 Destino objetivo: " << destinoFinal << std::endl;
 
+            if (myId != destinoFinal) {
+                std::cout << "🔁 Nodo " << myId
+                          << " reenviando beacon (prevHop=" << prevHop
+                          << ") hacia destino final desde posición: "
+                          << mobility->getPositionAt(simTime()).str()
+                          << std::endl;
 
-    // Enviar vecinos actuales
-    BeaconList::beaconPtr curr = ListBeacon.getHead();
-    while (curr != NULL) {
-        std::string dir = "Desconocida";
-        if (curr->lastCoord != curr->SenderCoord) {
-            dir = calcularDireccion(curr->lastCoord, curr->SenderCoord);
+                forwardToNextHop(
+                    /*originId*/      myId,
+                    /*destinationId*/ destinoFinal,
+                    /*destCoord*/     destC,
+                    /*prevHop*/       prevHop    // ← y aquí lo pasamos
+                );
+            }
+            else {
+                std::cout << "✅ Nodo " << myId
+                          << " llegó a destino final." << std::endl;
+            }
+            return;
         }
-
-        fprintf(pipe, "ID:%d Coord:(%.2f,%.2f,0) Dir:%s\n",
-                curr->idVehicle,
-                curr->SenderCoord.x,
-                curr->SenderCoord.y,
-                dir.c_str());
-        curr = curr->next;
+    }
+    else if (auto* bsm = dynamic_cast<DemoSafetyMessage*>(frame)) {
+        onBSM(bsm);
     }
 
-    // Leer respuesta
-    char buffer[128];
-    fgets(buffer, sizeof(buffer), pipe);
-    int nextHop = atoi(buffer);
-    pclose(pipe);
-
-    if (nextHop != -1) {
-        TraCIDemo11pMessage* nuevoBeacon = new TraCIDemo11pMessage("beaconGPRS");
-        nuevoBeacon->addPar("destino") = destinoFinal;
-        nuevoBeacon->setSenderAddress(myId);
-        nuevoBeacon->setRecipientAddress(nextHop);
-        sendDown(nuevoBeacon);
-    } else {
-        EV << "❌ Nodo " << myId << " no encontró un next hop válido." << endl;
-    }
 }
 
 
@@ -198,103 +164,31 @@ void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
 void TraCIDemo11p::handleSelfMsg(cMessage* msg)
 {
 
-/////////////////////ESTE CODIGO VALE PARA ELEGIR MI VECINO /////////////////////
-//    if (simTime() > 20 && myId == 16 && !yaImprimiInfo) {
-//        yaImprimiInfo = true;
-//
-//        FILE* pipe = popen("python3 -u calcular_siguiente_salto.py 22 52 2622.26 28.6916", "w");
-//        if (!pipe) {
-//            std::cerr << "Error al ejecutar el script Python" << std::endl;
-//            return;
-//        }
-//
-//        BeaconList::beaconPtr curr = ListBeacon.getHead();
-//        while (curr != NULL) {
-//            std::string dir = "Desconocida";
-//            if (curr->lastCoord != curr->SenderCoord) {
-//                dir = calcularDireccion(curr->lastCoord, curr->SenderCoord);
-//            }
-//
-//            fprintf(pipe, "ID:%d Coord:(%.2f,%.2f,0) Dir:%s\n",
-//                    curr->idVehicle,
-//                    curr->SenderCoord.x,
-//                    curr->SenderCoord.y,
-//                    dir.c_str());
-//
-//            curr = curr->next;
-//        }
-//
-//        pclose(pipe);  // Cerramos escritura (por ahora no esperamos respuesta)
-//    }
-    ////////////////////////////////////////////////////////////////////////////////////
+ ///////////////////////////////////////////////////////////////////////
+    // 1) En handleSelfMsg: disparar el bucle en t > 20s para nodo 16
+    // Por ejemplo, para iniciar el forwarding tras 20s:
+
+    // sólo una vez, en el nodo 16, guardo la posición fija del nodo 52
+
+       if (simTime() > 20 && myId == 16 && !yaImprimiInfo) {
+           yaImprimiInfo = true;
+
+           destCoord = Coord(2622.26, 28.6916, 0);  // Asignación directa
+           std::cout << "📌 Posición fija del nodo 52 = " << destCoord.str() << std::endl;
 
 
-    if (simTime() > 20 && myId == 16 && !yaImprimiInfo) {
-        yaImprimiInfo = true;
+           forwardToNextHop(
+               /*originId*/      16,
+               /*destinationId*/ 52,
+               /*destCoord*/     destCoord,
+               /*prevHop=*/-1
+           );
+           return;
+           std::cout << "✅ Nodo entro aqui N veces" << std::endl;
+           return;
+       }
 
-        // 1. Ejecutar script para decidir next hop
-        FILE* pipe = popen("python3 -u calcular_siguiente_salto.py 16 52 2622.26 28.6916", "w");
-        if (!pipe) {
-            std::cerr << "Error al ejecutar el script Python" << std::endl;
-            return;
-        }
-
-        BeaconList::beaconPtr curr = ListBeacon.getHead();
-        while (curr != NULL) {
-            std::string dir = "Desconocida";
-            if (curr->lastCoord != curr->SenderCoord) {
-                dir = calcularDireccion(curr->lastCoord, curr->SenderCoord);
-            }
-
-            fprintf(pipe, "ID:%d Coord:(%.2f,%.2f,0) Dir:%s\n",
-                    curr->idVehicle,
-                    curr->SenderCoord.x,
-                    curr->SenderCoord.y,
-                    dir.c_str());
-            curr = curr->next;
-        }
-
-        // Leer next hop
-        char buffer[128];
-        fgets(buffer, sizeof(buffer), pipe);
-        int nextHop = atoi(buffer);  // ← convertir a int
-        pclose(pipe);
-
-        // 2. Crear el beacon y enviarlo
-        if (nextHop != -1) {
-            TraCIDemo11pMessage* bsm = new TraCIDemo11pMessage("beaconGPRS");
-            bsm->addPar("destino") = 52;  // ← lo puedes cambiar dinámicamente
-            bsm->setSenderAddress(myId);
-            bsm->setRecipientAddress(nextHop);  // usar next hop
-            sendDown(bsm);
-        } else {
-            std::cerr << "[ERROR] No se encontró next hop desde nodo " << myId << std::endl;
-        }
-    }
-
-
-
-    if (TraCIDemo11pMessage* wsm = dynamic_cast<TraCIDemo11pMessage*>(msg)) {
-        // send this message on the service channel until the counter is 3 or higher.
-        // this code only runs when channel switching is enabled
-        sendDown(wsm->dup());
-        wsm->setSerial(wsm->getSerial() + 1);
-
-        if (wsm->getSerial() >= 3) {
-            // stop service advertisements
-            stopService();
-            delete (wsm);
-        }
-        else {
-            scheduleAt(simTime() + 1, wsm);
-
-        }
-    }
-    else {
-
-        DemoBaseApplLayer::handleSelfMsg(msg);
-    }
-
+       DemoBaseApplLayer::handleSelfMsg(msg);
 
 
 }
@@ -339,10 +233,7 @@ void TraCIDemo11p::PreprocessingPreparaBeaconValues(DemoSafetyMessage* bsm) {
     // ✅ Nuevo: obtener coordenada del emisor
     Coord emisorCoord = bsm->getIni_position();
 
-        // Puedes imprimirlo para verificar
-    //imprime al mandar el mensaje
-    //std::cout << "=== Coordenada del emisor ===" << std::endl;
-    //std::cout << "Nodo: " << Table_Ngh_NodeId << " Posición: " << emisorCoord.str() << std::endl;
+
     ////////////////////////////////////////////////////////////////////////////////
     // En donde quieras imprimir (por ejemplo, en initialize o en PrintBeacons):
     int id = myId;  // O tu identificador real
@@ -350,8 +241,6 @@ void TraCIDemo11p::PreprocessingPreparaBeaconValues(DemoSafetyMessage* bsm) {
     //std::cout << "Nodo con ID = " << id << " → " << nombreNodo << std::endl;
     ////////////////////////////////////////////////////////////////////////////////
 
-    //Msg_RecipienAddress = bsm->getRecipientAddress();                  //cual es el destino del MSG????
-    //Msg_DestinationAddress = bsm->getDestinationAddress();             // verifica la posible direccion de destino
 }
 
 
@@ -368,6 +257,86 @@ void TraCIDemo11p::sendDirectedBeaconTo(int dstId) {
                   << " con posición " << curPosition.str() << "\n";
 
     sendDown(bsm);  // Envía el mensaje al nivel inferior (MAC)
+}
+
+void TraCIDemo11p::handleLowerMsg(cMessage* msg) {
+    BaseFrame1609_4* wsm = dynamic_cast<BaseFrame1609_4*>(msg);
+    if (wsm) {
+        onWSM(wsm);  // pasa a tu lógica
+    } else {
+        std::cout << "Mensaje desconocido: " << msg->getClassName() << std::endl;
+
+        delete msg;
+    }
+}
+
+void TraCIDemo11p::forwardToNextHop(int originId, int destinationId, const Coord& curPos,  int prevHop) {
+    // 1) Llamada a Python con redirección de salida a archivo
+   // std::cout << "=== Python recibió los vecinos ===" << std::endl;
+
+    std::ostringstream cmd;
+    cmd << "python3 -u calcular_siguiente_salto.py "
+        << originId << " "
+        << destinationId << " "
+        << curPos.x << " " << curPos.y
+        << " > nextHop.txt";
+    FILE* pipe = popen(cmd.str().c_str(), "w");
+    if (!pipe) {
+        std::cout << "=== [ERROR] No pude abrir tubería a Python ===" << std::endl;
+        return;
+    }
+
+    // 2) Escribir la tabla de vecinos
+    BeaconList::beaconPtr curr = ListBeacon.getHead();
+    while (curr) {
+        std::string dir = "Desconocida";
+        if (curr->lastCoord != curr->SenderCoord)
+            dir = calcularDireccion(curr->lastCoord, curr->SenderCoord);
+        EV << "[VECINO RECIBIDO] ID:" << curr->idVehicle
+           << " Coord:" << curr->SenderCoord.str()
+           << " Dir:" << dir << "\n";
+        fprintf(pipe,
+                "ID:%d Coord:(%.2f,%.2f,0) Dir:%s\n",
+                curr->idVehicle,
+                curr->SenderCoord.x,
+                curr->SenderCoord.y,
+                dir.c_str()
+        );
+        curr = curr->next;
+    }
+    pclose(pipe);
+
+    // 3) Leer el nextHop desde el archivo
+    std::ifstream in("nextHop.txt");
+    if (!in.is_open()) {
+        std::cout << "[ERROR] No pude abrir nextHop.txt" << std::endl;
+
+        return;
+    }
+    int nextHop = -1;
+    in >> nextHop;
+    in.close();
+
+    std::cout << "🚀 Nodo " << myId
+              << " enviará beaconGPRS unicast al nextHop = "
+              << nextHop << std::endl;
+
+
+    // 4) Construir y enviar el mensaje
+    if (nextHop != -1) {
+        auto* wsm = new TraCIDemo11pMessage("beaconGPRS");
+        wsm->setDemoData("hola2");
+        wsm->addPar("destino") = destinationId;  // ✅ OK
+        wsm->addPar("prevHop") = originId;       // ✅ AGREGAR ESTE
+        wsm->addPar("destX") = curPos.x;         // ✅ Si usas esto en onWSM
+        wsm->addPar("destY") = curPos.y;
+        populateWSM(wsm, nextHop);
+        sendDown(wsm);
+    }
+    else {
+        std::cout << "[WARN] Python devolvió nextHop = -1" << std::endl;
+
+    }
 }
 
 

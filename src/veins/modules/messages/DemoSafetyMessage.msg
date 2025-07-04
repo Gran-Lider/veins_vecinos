@@ -27,6 +27,8 @@ import veins.base.utils.SimpleAddress;
 namespace veins;
 
 packet DemoSafetyMessage extends BaseFrame1609_4 {
+    string demoData;
+    
     Coord senderPos;
     Coord senderSpeed;
     Coord ini_position;

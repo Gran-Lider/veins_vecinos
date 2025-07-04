@@ -27,7 +27,14 @@ import veins.base.utils.SimpleAddress;
 namespace veins;
 
 packet TraCIDemo11pMessage extends BaseFrame1609_4 {
-    string demoData;
+    //string demoData;
     LAddress::L2Type senderAddress = -1;
     int serial = 0;
+    int destino;       // ya lo tenías
+    string demoData;   // ya lo tenías
+    int prevHop;       // <-- nuevo
+    double destX;      // <-- nuevo
+    double destY;      // <-- nuevo
+    
+    
 }

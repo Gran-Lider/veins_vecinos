@@ -51,16 +51,24 @@ protected:
     bool forwardMsg;
     int currentSubscribedServiceId;
 
+    cMessage* sendEvt = nullptr;
+
 protected:
+
+    void forwardToNextHop(int originId, int destinationId, const Coord& curPos, int prevHop);
+
+    virtual void handleLowerMsg(cMessage* msg) override;
     void onWSM(BaseFrame1609_4* wsm) override;
     void onWSA(DemoServiceAdvertisment* wsa) override;
 
-
-
+    //cMessage* sendHelloEvent; // <--- Añade esta línea
+    cMessage* sendMessageEvent;
     ////////////////////////AGREGADOS////////////////////////////////////////
     std::ofstream neighborLog;  // LOG de vecinos
     virtual void sendDirectedBeaconTo(int dstId);  // <- agrégalo aquí
     bool yaImprimiInfo = false;
+
+    cMessage* sendHelloEvt = nullptr;
 
     ////////////////////////////////////////////////////////////////////////
 

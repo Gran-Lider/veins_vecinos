@@ -39,12 +39,7 @@ public:
             double time = 0;
             Coord SenderCoord;
             //////////////////////Agregadas para la coordenada
-
-
             Coord lastCoord;  // NUEVO
-
-
-
             ///////////////
             double dsr = 0;
             double dsd = 0;
