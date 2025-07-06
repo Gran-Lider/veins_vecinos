@@ -23,9 +23,18 @@
 #include "veins/modules/application/traci/TraCIDemo11p.h"
 #include "veins/modules/application/utils/DirectionUtils.h"
 #include "veins/modules/application/traci/TraCIDemo11pMessage_m.h"
+#include "veins/modules/mobility/traci/TraCIMobility.h"
+
 
 Coord destCoord;      // posición fija de destino (52)
 bool  destInitialized = false;
+static bool yaFueAsignada = false;
+static Coord posicionNodo50;
+static int origen = 28;
+static int destino = 40;
+Coord Coord_respuesta = Coord::ZERO;
+
+
 
 #include <fstream>  // std::ifstream
 #include <cstdio>   // popen
@@ -43,10 +52,27 @@ std::map<int, Coord> ultimaPosVecino;
 void TraCIDemo11p::initialize(int stage)
 {
     DemoBaseApplLayer::initialize(stage);
+    vehicleIndex = getParentModule()->getIndex();
+    vehicleName = getParentModule()->getFullName();
+    //vehicleIdInterno = getParentModule()->getId();
+    vehicleIdInterno = getParentModule()->getSubmodule("nic")->getId();
+
+    //myId = getParentModule()->getId();
+    // --- INICIO DE LA LÓGICA PARA COORDENADAS ---
+    Coord current_Pos = mobility->getPositionAt(simTime());
+
     if (stage == 0) {
 
-        std::cout << "✅ Nodo " << getParentModule()->getIndex() << " usando TraCIDemo11p" << std::endl;
+        std::cout << "🧩 Nodo creado: " << vehicleName
+                  << " | Index: " << vehicleIndex
+                  << " | ID interno OMNeT++: " << vehicleIdInterno
+                  << " | Posición inicial (x, y, z): (" << current_Pos.x
+                  << ", " << current_Pos.y << ", " << current_Pos.z << ")"
+                  << " | t = " << simTime() << std::endl;
 
+
+        std::cout << "✅ Nodo " << getParentModule()->getIndex() << " usando TraCIDemo11p" << std::endl;
+//
 
         sentMessage = false;
         lastDroveAt = simTime();
@@ -62,9 +88,13 @@ void TraCIDemo11p::initialize(int stage)
         // Mensaje inicial
         neighborLog << "=== TABLA DE VECINOS DEL NODO " << nodeIndex << " ===" << std::endl;
 
+        if (vehicleIdInterno == destino && yaFueAsignada == false) {
+            std::cout << "Aparecio el nodo destino" << std::endl;
+            posicionNodo50 = current_Pos;
+            yaFueAsignada = true;
+            std::cout << "✅ Coordenada del nodo destino guardada: " << posicionNodo50.str() << std::endl;
+                }
     }
-
-
 }
 
 void TraCIDemo11p::onWSA(DemoServiceAdvertisment* wsa)
@@ -116,6 +146,9 @@ void TraCIDemo11p::onBSM(DemoSafetyMessage* bsm) {
 void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
 {
 
+    std::cout << "📥 Nodo " << myId << " recibió un WSM con nombre: " << frame->getName() << std::endl;
+
+
     if (auto* msg = dynamic_cast<TraCIDemo11pMessage*>(frame)) {
         std::cout << "📩 Nodo " << myId
                   << " recibió TraCIDemo11pMessage: "
@@ -123,7 +156,7 @@ void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
                   << ", contenido: " << msg->getDemoData()
                   << std::endl;
 
-        if (std::string(msg->getName()) == "beaconGPRS") {
+        if (std::string(msg->getName()) == "beaconNeuroRoute") {
             int destinoFinal = msg->par("destino").longValue();
             int prevHop      = msg->par("prevHop").longValue();      // ← extraemos prevHop
             double dx        = msg->par("destX").doubleValue();      // ← y el destX/destY
@@ -135,13 +168,15 @@ void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
             if (myId != destinoFinal) {
                 std::cout << "🔁 Nodo " << myId
                           << " reenviando beacon (prevHop=" << prevHop
-                          << ") hacia destino final desde posición: "
+                          << ") hacia destino final "
+                          << posicionNodo50.str()
+                          <<" desde posición: "
                           << mobility->getPositionAt(simTime()).str()
                           << std::endl;
 
                 forwardToNextHop(
                     /*originId*/      myId,
-                    /*destinationId*/ destinoFinal,
+                    /*destinationId*/ destino,
                     /*destCoord*/     destC,
                     /*prevHop*/       prevHop    // ← y aquí lo pasamos
                 );
@@ -149,6 +184,19 @@ void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
             else {
                 std::cout << "✅ Nodo " << myId
                           << " llegó a destino final." << std::endl;
+
+                // Nuevo origen y destino
+                   int nuevoOrigen = myId;
+                   int nuevoDestino = origen;
+
+                   std::cout << "📤 Nodo " << myId << " enviará respuesta a nodo " << Coord_respuesta << " con posición " << curPosition.str()<< std::endl;
+                   // Enviar mensaje de vuelta
+                   forwardToNextHop(
+                       /*originId*/      nuevoOrigen,
+                       /*destinationId*/ nuevoDestino,
+                       /*destCoord*/     Coord_respuesta,  // ← destino original era este
+                       /*prevHop*/       -1                // ← nuevo inicio
+                   );
             }
             return;
         }
@@ -160,26 +208,33 @@ void TraCIDemo11p::onWSM(BaseFrame1609_4* frame)
 }
 
 
-
 void TraCIDemo11p::handleSelfMsg(cMessage* msg)
 {
-
+    std::cout << "Entro aqui"<< myId << " | t = " << simTime() << std::endl;
  ///////////////////////////////////////////////////////////////////////
     // 1) En handleSelfMsg: disparar el bucle en t > 20s para nodo 16
     // Por ejemplo, para iniciar el forwarding tras 20s:
-
     // sólo una vez, en el nodo 16, guardo la posición fija del nodo 52
 
-       if (simTime() > 20 && myId == 16 && !yaImprimiInfo) {
+       if (simTime() > 32 && myId == origen && !yaImprimiInfo ) {
+
+           std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<Entro aqui>>>>>>>>>>>>>>>>>>"<< std::endl;
            yaImprimiInfo = true;
 
-           destCoord = Coord(2622.26, 28.6916, 0);  // Asignación directa
-           std::cout << "📌 Posición fija del nodo 52 = " << destCoord.str() << std::endl;
+           Coord current_Pos = mobility->getPositionAt(simTime());
+           std::cout << "📍 Coordenadas del nodo origen (ID = " << myId << ") = "
+                     << current_Pos.str() << std::endl;
+           Coord_respuesta = current_Pos;
+
+           //destCoord = Coord(2622.26, 28.6916, 0);  // Asignación directa
+           destCoord = posicionNodo50;
+
+           std::cout << "📌 Posición fija del nodo destino = " << destCoord.str() << std::endl;
 
 
            forwardToNextHop(
-               /*originId*/      16,
-               /*destinationId*/ 52,
+               /*originId*/      origen,
+               /*destinationId*/ destino,
                /*destCoord*/     destCoord,
                /*prevHop=*/-1
            );
@@ -189,7 +244,6 @@ void TraCIDemo11p::handleSelfMsg(cMessage* msg)
        }
 
        DemoBaseApplLayer::handleSelfMsg(msg);
-
 
 }
 
@@ -233,14 +287,12 @@ void TraCIDemo11p::PreprocessingPreparaBeaconValues(DemoSafetyMessage* bsm) {
     // ✅ Nuevo: obtener coordenada del emisor
     Coord emisorCoord = bsm->getIni_position();
 
-
     ////////////////////////////////////////////////////////////////////////////////
     // En donde quieras imprimir (por ejemplo, en initialize o en PrintBeacons):
     int id = myId;  // O tu identificador real
     std::string nombreNodo = getParentModule()->getFullName();
     //std::cout << "Nodo con ID = " << id << " → " << nombreNodo << std::endl;
     ////////////////////////////////////////////////////////////////////////////////
-
 }
 
 
@@ -274,11 +326,20 @@ void TraCIDemo11p::forwardToNextHop(int originId, int destinationId, const Coord
     // 1) Llamada a Python con redirección de salida a archivo
    // std::cout << "=== Python recibió los vecinos ===" << std::endl;
 
+//    std::ostringstream cmd;
+//    cmd << "python3 -u calcular_siguiente_salto.py "
+//        << originId << " "
+//        << destinationId << " "
+//        << curPos.x << " " << curPos.y
+//        << " > nextHop.txt";
+
     std::ostringstream cmd;
     cmd << "python3 -u calcular_siguiente_salto.py "
         << originId << " "
         << destinationId << " "
-        << curPos.x << " " << curPos.y
+        << curPos.x << " "
+        << curPos.y << " "
+        << prevHop  // ✅ AGREGADO: el argumento faltante
         << " > nextHop.txt";
     FILE* pipe = popen(cmd.str().c_str(), "w");
     if (!pipe) {
@@ -310,9 +371,9 @@ void TraCIDemo11p::forwardToNextHop(int originId, int destinationId, const Coord
     std::ifstream in("nextHop.txt");
     if (!in.is_open()) {
         std::cout << "[ERROR] No pude abrir nextHop.txt" << std::endl;
-
         return;
     }
+
     int nextHop = -1;
     in >> nextHop;
     in.close();
@@ -324,15 +385,29 @@ void TraCIDemo11p::forwardToNextHop(int originId, int destinationId, const Coord
 
     // 4) Construir y enviar el mensaje
     if (nextHop != -1) {
-        auto* wsm = new TraCIDemo11pMessage("beaconGPRS");
-        wsm->setDemoData("hola2");
+        auto* wsm = new TraCIDemo11pMessage("beaconNeuroRoute");
+        wsm->setDemoData("Mensaje_Importante");
         wsm->addPar("destino") = destinationId;  // ✅ OK
         wsm->addPar("prevHop") = originId;       // ✅ AGREGAR ESTE
         wsm->addPar("destX") = curPos.x;         // ✅ Si usas esto en onWSM
         wsm->addPar("destY") = curPos.y;
         populateWSM(wsm, nextHop);
         sendDown(wsm);
+
+
+        // 🟢 DEBUG: imprimir información del mensaje
+        std::cout << "DEBUG getName() = " << wsm->getName() << std::endl;
+
+
+        std::cout << "📤 Enviando beaconNeuroRoute desde nodo " << myId
+                  << " hacia nextHop " << nextHop
+                  << " con destino final " << destinationId
+                  << ", prevHop: " << originId
+                  << ", destX: " << curPos.x
+                  << ", destY: " << curPos.y
+                  << std::endl;
     }
+
     else {
         std::cout << "[WARN] Python devolvió nextHop = -1" << std::endl;
 

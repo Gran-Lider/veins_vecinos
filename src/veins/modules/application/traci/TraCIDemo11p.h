@@ -54,6 +54,12 @@ protected:
     cMessage* sendEvt = nullptr;
 
 protected:
+    int vehicleIndex;
+    std::string vehicleName;
+    int vehicleIdInterno;
+    int nicId;
+
+protected:
 
     void forwardToNextHop(int originId, int destinationId, const Coord& curPos, int prevHop);
 
